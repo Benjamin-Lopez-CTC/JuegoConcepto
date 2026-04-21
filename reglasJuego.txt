@@ -1,0 +1,9 @@
+1. el juego tendrá un cronómetro.
+2. el usuario ingresará los nombres de los jugadores y se tendrá un conteo de la cantidad.
+3. al comenzar el juego, se selecciona a uno aleatoriamente y se le pide un color, el cual se ingresa en un campo en el sitio, dicho 
+color es comparado con los otros colores ya ingresados si los hay.
+4. si el color se repite, se pierde el juego y guarda el tiempo y el numero al que se llego.
+5. si no se repite ningún color cuando se llegue al último jugador, se gana y se guarda el tiempo.
+6. el usuario solo podra avanzar al siguiente jugador cuando se ingrese el color y aprete un boton para continuar.
+7. la app sera únicamente controlada por una persona.
+
