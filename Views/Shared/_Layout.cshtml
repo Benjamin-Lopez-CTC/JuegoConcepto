@@ -10,6 +10,10 @@
     <link rel="stylesheet" href="~/css/game.css" asp-append-version="true" />
 </head>
 <body>
+    <nav class="top-nav">
+        <a asp-controller="Home" asp-action="Index" class="@(ViewContext.RouteData.Values["Action"]?.ToString() == "Index" ? "active" : "")">Juego</a>
+        <a asp-controller="Home" asp-action="TechStack" class="@(ViewContext.RouteData.Values["Action"]?.ToString() == "TechStack" ? "active" : "")">Stack Tecnológico</a>
+    </nav>
     @RenderBody()
     @await RenderSectionAsync("Scripts", required: false)
 </body>

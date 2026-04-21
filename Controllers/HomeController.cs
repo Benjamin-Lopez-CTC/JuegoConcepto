@@ -47,6 +47,12 @@ namespace JuegoConcepto.Controllers
             return View(state);
         }
 
+        [HttpGet]
+        public IActionResult TechStack()
+        {
+            return View();
+        }
+
         // ─── POST /Home/AddPlayer ─────────────────────────────────────────────
 
         [HttpPost]

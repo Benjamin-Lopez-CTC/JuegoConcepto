@@ -33,16 +33,43 @@ body {
     background: var(--bg);
     color: var(--text);
     min-height: 100vh;
+}
+
+/* ─── Navigation ────────────────────────────── */
+.top-nav {
     display: flex;
     justify-content: center;
-    align-items: flex-start;
-    padding: 2rem 1rem;
+    gap: 1.5rem;
+    padding: 1rem;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 2rem;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.top-nav a {
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: color 0.2s;
+    padding: 0.5rem 1rem;
+    border-radius: var(--radius-sm);
+}
+
+.top-nav a:hover,
+.top-nav a.active {
+    color: var(--text);
+    background: var(--surface-2);
 }
 
 /* ─── Wrapper ─────────────────────────────── */
 .game-wrapper {
     width: 100%;
     max-width: 700px;
+    margin: 0 auto;
 }
 
 /* ─── Header ──────────────────────────────── */

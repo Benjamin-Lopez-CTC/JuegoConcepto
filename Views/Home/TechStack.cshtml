@@ -1,0 +1,52 @@
+@{
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    ViewData["Title"] = "Stack Tecnológico";
+}
+
+<div class="game-wrapper">
+    <div class="game-header">
+        <h1>🚀 Stack Tecnológico</h1>
+        <p>Tecnologías e ideas detrás de la construcción de esta aplicación web.</p>
+    </div>
+
+    <!-- C# & .NET -->
+    <div class="card">
+        <div class="card-title" style="color: #512bd4;">Core: C# & ASP.NET Core MVC</div>
+        <h2 style="font-size: 1.25rem; margin-bottom: 0.75rem; color: var(--text);">Lógica y Estructura Robusta</h2>
+        <p style="color: var(--text-muted); font-size: 0.95rem; line-height: 1.6;">
+            La aplicación está construida sobre el moderno framework <strong>.NET 10</strong>. Utilizamos el patrón arquitectónico <strong>MVC (Model-View-Controller)</strong> para separar claramente la lógica del negocio, el modelo de datos (estado del juego) y las vistas presentadas al usuario final. El backend en C# se encarga de validar la lógica del juego, manejar la matriz aleatoria de turnos y validar la entrada de los usuarios de manera segura.
+        </p>
+    </div>
+
+    <!-- State Management -->
+    <div class="card">
+        <div class="card-title" style="color: #eab308;">Gestión de Estado: Server-Side Sessions</div>
+        <h2 style="font-size: 1.25rem; margin-bottom: 0.75rem; color: var(--text);">Persistencia Efímera Confiable</h2>
+        <p style="color: var(--text-muted); font-size: 0.95rem; line-height: 1.6;">
+            Dado que el juego consiste en una sola página dinámica que actualiza todas sus fases de manera secuencial, conservamos el <code>GameState</code> en la memoria distribuida del servidor a través de <strong>ISession</strong>. Con cada interacción ("Agregar Jugador", "Enviar Color"), el controlador lee, muta y guarda atómicamente el estado en formato JSON, garantizando la consistencia y evitando exponer todo el estado a manipulaciones del lado del cliente.
+        </p>
+    </div>
+
+    <!-- Frontend -->
+    <div class="card">
+        <div class="card-title" style="color: #0ea5e9;">Frontend: HTML5, Vanilla CSS & ES6</div>
+        <h2 style="font-size: 1.25rem; margin-bottom: 0.75rem; color: var(--text);">Ligero, Rápido y Moderno</h2>
+        <p style="color: var(--text-muted); font-size: 0.95rem; line-height: 1.6;">
+            Hemos prescindido intencionalmente de frameworks CSS pesados (como Bootstrap) y librerías de componentes voluminosas. En su lugar, optamos por una aproximación puramente <strong>Vanilla</strong>:
+        </p>
+        <ul style="color: var(--text-muted); font-size: 0.95rem; line-height: 1.6; margin-left: 1.5rem; margin-top: 0.5rem;">
+            <li><strong>Estilos Custom:</strong> Implementación de variables CSS (Custom Properties) para soportar un tema oscuro vibrante y sistema de diseño cohesivo.</li>
+            <li><strong>Tipografía:</strong> Integración de la fuente <em>Inter</em> para maximizar la legibilidad y estética contemporánea.</li>
+            <li><strong>Interactividad:</strong> Animaciones sutiles puramente en CSS para el feedback de botones y transiciones, resultando en una UI muy receptiva y de alto rendimiento. Además de micro-scripts de JS exclusivos para gestionar el cronómetro del lado del cliente.</li>
+        </ul>
+    </div>
+
+    <!-- Despliegue -->
+    <div class="card">
+        <div class="card-title" style="color: #ec4899;">Despliegue: Docker & Render</div>
+        <h2 style="font-size: 1.25rem; margin-bottom: 0.75rem; color: var(--text);">Containerización y Nube</h2>
+        <p style="color: var(--text-muted); font-size: 0.95rem; line-height: 1.6;">
+            La aplicación está preparada para despliegue moderno vía un <strong>Dockerfile Multi-stage</strong>. Compilamos mediante el SDK de .NET y paquetizamos usando la versión <em>runtime</em> pura, resultando en un contenedor ultra-liviano. La aplicación escala y lee configuraciones externas dinámicamente mediante variables de entorno (como el puerto inyectado por las plataformas de nube, ejemplo Render).
+        </p>
+    </div>
+</div>
