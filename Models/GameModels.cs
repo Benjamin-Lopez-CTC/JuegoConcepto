@@ -1,12 +1,5 @@
 namespace JuegoConcepto.Models
 {
-    public enum GamePhase
-    {
-        Setup,      // Ingresando jugadores
-        Playing,    // Jugando
-        Won,        // Ganado
-        Lost        // Perdido
-    }
 
     public class PlayerEntry
     {

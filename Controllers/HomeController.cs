@@ -1,51 +1,100 @@
 using Microsoft.AspNetCore.Mvc;
 using JuegoConcepto.Models;
+using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 
 namespace JuegoConcepto.Controllers
 {
     public class HomeController : Controller
     {
-        private const string SessionKey = "GameState";
+        private readonly GameDbContext _db;
+
+        public HomeController(GameDbContext db)
+        {
+            _db = db;
+        }
 
         // ─── Helpers ──────────────────────────────────────────────────────────
 
-        private GameState GetState()
-        {
-            string? json = HttpContext.Session.GetString(SessionKey);
-            if (string.IsNullOrEmpty(json))
-                return new GameState();
-            return JsonSerializer.Deserialize<GameState>(json) ?? new GameState();
-        }
-
-        private void SaveState(GameState state)
-        {
-            HttpContext.Session.SetString(SessionKey, JsonSerializer.Serialize(state));
-        }
-
-        // Normalizar color: minúsculas, sin espacios extra, sin tildes comunes
         private static string NormalizeColor(string color)
         {
             if (string.IsNullOrWhiteSpace(color)) return string.Empty;
-
             string normalized = color.Trim().ToLowerInvariant();
-
-            // Reemplazar vocales con tilde
             normalized = normalized
                 .Replace('á', 'a').Replace('é', 'e').Replace('í', 'i')
                 .Replace('ó', 'o').Replace('ú', 'u').Replace('ü', 'u');
-
             return normalized;
+        }
+
+        // Helper para convertir el estado de la DB a la vieja ViewModel (GameState)
+        // para afectar lo menos posible a la vista principal.
+        private async Task<GameState> BuildViewModelAsync()
+        {
+            var round = await _db.Rounds
+                .Include(r => r.Players)
+                .Include(r => r.Games)
+                .ThenInclude(g => g.ColorSubmissions)
+                .OrderByDescending(r => r.Id)
+                .FirstOrDefaultAsync(r => r.IsActive);
+
+            var vm = new GameState();
+
+            if (round == null)
+            {
+                vm.Phase = GamePhase.Setup;
+                return vm;
+            }
+
+            vm.Players = round.Players.OrderBy(p => p.OrderIndex).Select(p => p.Name).ToList();
+
+            var currentGame = round.Games.OrderByDescending(g => g.Id).FirstOrDefault();
+            
+            if (currentGame == null || currentGame.Phase == GamePhase.Won || currentGame.Phase == GamePhase.Lost)
+            {
+                // Si no hay juego activo en esta ronda, estamos en el Setup pidiendo que arranque uno nuevo
+                vm.Phase = GamePhase.Setup;
+                return vm;
+            }
+
+            // Estamos jugando o esperando nombre
+            vm.Phase = currentGame.Phase;
+            vm.ElapsedMilliseconds = currentGame.ElapsedMilliseconds;
+            vm.StartTime = currentGame.StartTime;
+            vm.WinningReason = currentGame.WinningReason;
+            vm.DuplicateColor = currentGame.DuplicateColor;
+            vm.PlayersReached = currentGame.PlayersReached;
+
+            // Historial de colores del juego actual
+            vm.ColorHistory = currentGame.ColorSubmissions.OrderBy(cs => cs.InsertedAt).Select(cs => new PlayerEntry
+            {
+                PlayerName = cs.Player.Name,
+                Color = cs.Color
+            }).ToList();
+
+            if (!string.IsNullOrEmpty(currentGame.SerializedRoundQueue))
+            {
+                vm.RoundQueue = JsonSerializer.Deserialize<List<int>>(currentGame.SerializedRoundQueue) ?? new List<int>();
+            }
+
+            // Localizar indice del jugador actual en la lista del ViewModel
+            var currentPlayer = round.Players.FirstOrDefault(p => p.Id == currentGame.CurrentPlayerId);
+            if (currentPlayer != null)
+            {
+                vm.CurrentPlayerIndex = vm.Players.IndexOf(currentPlayer.Name);
+            }
+            
+            return vm;
         }
 
         // ─── GET / ────────────────────────────────────────────────────────────
 
         [HttpGet]
-        public IActionResult Index()
+        public async Task<IActionResult> Index()
         {
-            GameState state = GetState();
-            return View(state);
+            return View(await BuildViewModelAsync());
         }
+
+        // ─── GET /TechStack ───────────────────────────────────────────────────
 
         [HttpGet]
         public IActionResult TechStack()
@@ -53,164 +102,243 @@ namespace JuegoConcepto.Controllers
             return View();
         }
 
-        // ─── POST /Home/AddPlayer ─────────────────────────────────────────────
+        // ─── RONDAS: POST /Home/AddPlayer ─────────────────────────────────────
 
         [HttpPost]
-        public IActionResult AddPlayer(string playerName)
+        public async Task<IActionResult> AddPlayer(string playerName)
         {
-            GameState state = GetState();
-
-            if (state.Phase != GamePhase.Setup)
-                return RedirectToAction(nameof(Index));
-
             string name = playerName?.Trim() ?? string.Empty;
+            if (string.IsNullOrEmpty(name)) return RedirectToAction(nameof(Index));
 
-            if (!string.IsNullOrEmpty(name) && !state.Players.Contains(name, StringComparer.OrdinalIgnoreCase))
+            var round = await _db.Rounds.Include(r => r.Players)
+                .OrderByDescending(r => r.Id)
+                .FirstOrDefaultAsync(r => r.IsActive);
+
+            if (round == null)
             {
-                state.Players.Add(name);
-                SaveState(state);
+                // Crear ronda activa
+                round = new Round();
+                _db.Rounds.Add(round);
+                await _db.SaveChangesAsync();
+            }
+
+            // No permitir si ya hay un juego corriendo
+            if (round.Games.Any(g => g.Phase == GamePhase.Playing || g.Phase == GamePhase.WonPendingId))
+                return RedirectToAction(nameof(Index));
+
+            if (!round.Players.Any(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+            {
+                int nextIndex = round.Players.Count;
+                round.Players.Add(new Player { Name = name, OrderIndex = nextIndex });
+                await _db.SaveChangesAsync();
             }
 
             return RedirectToAction(nameof(Index));
         }
 
-        // ─── POST /Home/RemovePlayer ──────────────────────────────────────────
+        // ─── RONDAS: POST /Home/RemovePlayer ──────────────────────────────────
 
         [HttpPost]
-        public IActionResult RemovePlayer(int index)
+        public async Task<IActionResult> RemovePlayer(int index)
         {
-            GameState state = GetState();
+            var round = await _db.Rounds.Include(r => r.Players)
+                .OrderByDescending(r => r.Id)
+                .FirstOrDefaultAsync(r => r.IsActive);
 
-            if (state.Phase != GamePhase.Setup)
-                return RedirectToAction(nameof(Index));
-
-            if (index >= 0 && index < state.Players.Count)
+            if (round != null && !round.Games.Any(g => g.Phase == GamePhase.Playing || g.Phase == GamePhase.WonPendingId))
             {
-                state.Players.RemoveAt(index);
-                SaveState(state);
+                var pList = round.Players.OrderBy(p => p.OrderIndex).ToList();
+                if (index >= 0 && index < pList.Count)
+                {
+                    _db.Players.Remove(pList[index]);
+                    await _db.SaveChangesAsync();
+                }
             }
 
             return RedirectToAction(nameof(Index));
         }
 
-        // ─── POST /Home/StartGame ─────────────────────────────────────────────
+        // ─── JUEGO: POST /Home/StartGame ──────────────────────────────────────
 
         [HttpPost]
-        public IActionResult StartGame()
+        public async Task<IActionResult> StartGame()
         {
-            GameState state = GetState();
+            var round = await _db.Rounds.Include(r => r.Players)
+                .OrderByDescending(r => r.Id)
+                .FirstOrDefaultAsync(r => r.IsActive);
 
-            if (state.Phase != GamePhase.Setup || state.Players.Count < 2)
+            if (round == null || round.Players.Count < 2)
                 return RedirectToAction(nameof(Index));
 
-            // Preparar la primera ronda: shuffle de índices
-            state.Phase = GamePhase.Playing;
-            state.ColorHistory.Clear();
-            state.StartTime = DateTime.UtcNow;
-            state.ElapsedMilliseconds = 0;
-            state.PlayersReached = 0;
+            var players = round.Players.OrderBy(p => p.OrderIndex).ToList();
+            var queue = Enumerable.Range(0, players.Count).ToList();
+            Random rng = Random.Shared;
+            for (int i = queue.Count - 1; i > 0; i--)
+            {
+                int j = rng.Next(i + 1);
+                (queue[i], queue[j]) = (queue[j], queue[i]);
+            }
 
-            // Crear cola aleatoria con todos los jugadores
-            state.RoundQueue = CreateShuffledQueue(state.Players.Count);
-            state.CurrentPlayerIndex = state.RoundQueue[0];
-            state.RoundQueue.RemoveAt(0);
+            int currentIdx = queue[0];
+            queue.RemoveAt(0);
 
-            SaveState(state);
+            var game = new Game
+            {
+                RoundId = round.Id,
+                Phase = GamePhase.Playing,
+                StartTime = DateTime.UtcNow,
+                SerializedRoundQueue = JsonSerializer.Serialize(queue),
+                CurrentPlayerId = players[currentIdx].Id
+            };
+
+            _db.Games.Add(game);
+            await _db.SaveChangesAsync();
+
             return RedirectToAction(nameof(Index));
         }
 
-        // ─── POST /Home/SubmitColor ───────────────────────────────────────────
+        // ─── JUEGO: POST /Home/SubmitColor ────────────────────────────────────
 
         [HttpPost]
-        public IActionResult SubmitColor(string color, long elapsedMs)
+        public async Task<IActionResult> SubmitColor(string color, long elapsedMs)
         {
-            GameState state = GetState();
+            var round = await _db.Rounds.Include(r => r.Players).Include(r => r.Games).ThenInclude(g => g.ColorSubmissions)
+                .OrderByDescending(r => r.Id).FirstOrDefaultAsync(r => r.IsActive);
 
-            if (state.Phase != GamePhase.Playing)
+            if (round == null) return RedirectToAction(nameof(Index));
+
+            var game = round.Games.OrderByDescending(g => g.Id).FirstOrDefault();
+            if (game == null || game.Phase != GamePhase.Playing)
                 return RedirectToAction(nameof(Index));
 
             string normalized = NormalizeColor(color);
+            if (string.IsNullOrEmpty(normalized)) return RedirectToAction(nameof(Index));
 
-            if (string.IsNullOrEmpty(normalized))
-                return RedirectToAction(nameof(Index));
+            game.ElapsedMilliseconds = elapsedMs;
 
-            // Guardar tiempo recibido del cliente
-            state.ElapsedMilliseconds = elapsedMs;
-
-            // Verificar si el color se repite
-            string? duplicate = state.ColorHistory
-                .FirstOrDefault(e => NormalizeColor(e.Color) == normalized)?.Color;
+            // ===== REGLA NUEVA: Revisar si el color se repite en TODA LA RONDA =====
+            ColorSubmission? duplicate = null;
+            foreach (var g in round.Games)
+            {
+                duplicate = g.ColorSubmissions.FirstOrDefault(cs => cs.NormalizedColor == normalized);
+                if (duplicate != null) break;
+            }
 
             if (duplicate != null)
             {
-                // Perdieron
-                state.Phase = GamePhase.Lost;
-                state.DuplicateColor = duplicate;
-                state.PlayersReached = state.ColorHistory.Count + 1; // incluyendo el actual
-                state.WinningReason = $"El color \"{color}\" ya fue dicho antes.";
+                game.Phase = GamePhase.Lost;
+                game.DuplicateColor = color; // Usamos el original para mostrar
+                game.PlayersReached = game.ColorSubmissions.Count + 1;
+                game.WinningReason = $"El color \"{duplicate.Color}\" ya fue dicho por {duplicate.Player.Name} en otra partida anterior (o en esta).";
+                await _db.SaveChangesAsync();
+                return RedirectToAction(nameof(Index));
+            }
+
+            // Guardar color
+            _db.ColorSubmissions.Add(new ColorSubmission
+            {
+                GameId = game.Id,
+                PlayerId = game.CurrentPlayerId,
+                Color = color,
+                NormalizedColor = normalized
+            });
+            await _db.SaveChangesAsync();
+
+            var currentColorCount = await _db.ColorSubmissions.CountAsync(cs => cs.GameId == game.Id);
+            game.PlayersReached = currentColorCount;
+
+            var queue = JsonSerializer.Deserialize<List<int>>(game.SerializedRoundQueue!) ?? new List<int>();
+
+            // ¿Terminaron la ronda sin repetir?
+            if (queue.Count == 0 && currentColorCount >= round.Players.Count)
+            {
+                // ¡Ganaron! Pasamos a pendiente de ID para el Leaderboard
+                game.Phase = GamePhase.WonPendingId;
+                game.WinningReason = "¡Completaron una partida entera sin repetir colores de partidas pasadas!";
             }
             else
             {
-                // Agregar a historial
-                state.ColorHistory.Add(new PlayerEntry
-                {
-                    PlayerName = state.CurrentPlayerName ?? string.Empty,
-                    Color = color
-                });
+                if (queue.Count == 0) // Nunca debería pasar acá por nuestras reglas de 1 ronda, pero por si acaso.
+                    queue = CreateShuffledQueue(round.Players.Count);
 
-                state.PlayersReached = state.ColorHistory.Count;
-
-                // ¿Se completaron todos los jugadores en la ronda?
-                if (state.RoundQueue.Count == 0 && state.ColorHistory.Count >= state.Players.Count)
-                {
-                    // ¡Ganaron!
-                    state.Phase = GamePhase.Won;
-                    state.WinningReason = "¡Completaron una ronda sin repetir colores!";
-                }
-                else
-                {
-                    // Avanzar al siguiente jugador
-                    if (state.RoundQueue.Count == 0)
-                    {
-                        // Empezar nueva ronda
-                        state.RoundQueue = CreateShuffledQueue(state.Players.Count);
-                    }
-
-                    state.CurrentPlayerIndex = state.RoundQueue[0];
-                    state.RoundQueue.RemoveAt(0);
-                }
+                int nextIdx = queue[0];
+                queue.RemoveAt(0);
+                game.CurrentPlayerId = round.Players.OrderBy(p => p.OrderIndex).ElementAt(nextIdx).Id;
+                game.SerializedRoundQueue = JsonSerializer.Serialize(queue);
             }
 
-            SaveState(state);
+            await _db.SaveChangesAsync();
             return RedirectToAction(nameof(Index));
         }
 
-        // ─── POST /Home/ResetGame ─────────────────────────────────────────────
+        // ─── GAME: POST /Home/SaveWinningId ───────────────────────────────────
 
         [HttpPost]
-        public IActionResult ResetGame()
+        public async Task<IActionResult> SaveWinningId(string winningIdentifier)
         {
-            GameState state = GetState();
-
-            // Mantener lista de jugadores, volver a Setup
-            List<string> players = new(state.Players);
-            state = new GameState
+            var game = await _db.Games.OrderByDescending(g => g.Id).FirstOrDefaultAsync();
+            if (game != null && game.Phase == GamePhase.WonPendingId)
             {
-                Players = players,
-                Phase = GamePhase.Setup
-            };
-
-            SaveState(state);
+                game.WinningIdentifier = winningIdentifier ?? "Equipo Anónimo";
+                game.Phase = GamePhase.Won;
+                await _db.SaveChangesAsync();
+            }
             return RedirectToAction(nameof(Index));
         }
 
-        // ─── POST /Home/FullReset ─────────────────────────────────────────────
+        // ─── JUEGO: POST /Home/ResetGame ──────────────────────────────────────
 
         [HttpPost]
-        public IActionResult FullReset()
+        public async Task<IActionResult> ResetGame()
         {
-            HttpContext.Session.Remove(SessionKey);
+            var round = await _db.Rounds.OrderByDescending(r => r.Id).FirstOrDefaultAsync(r => r.IsActive);
+            if (round != null)
+            {
+                var game = await _db.Games.Where(g => g.RoundId == round.Id).OrderByDescending(g => g.Id).FirstOrDefaultAsync();
+                if (game != null && (game.Phase == GamePhase.Playing))
+                {
+                    // Si deciden reiniciar una en progreso, la marcamos como perdida
+                    game.Phase = GamePhase.Lost;
+                    game.WinningReason = "Reiniciado manualmente";
+                    await _db.SaveChangesAsync();
+                }
+            }
+            // Regresa a Index, lo cual en "Setup" dejará crear otro juego en la misma ronda
             return RedirectToAction(nameof(Index));
+        }
+
+        // ─── RONDAS: POST /Home/EndRound ──────────────────────────────────────
+
+        [HttpPost]
+        public async Task<IActionResult> EndRound()
+        {
+            var round = await _db.Rounds.OrderByDescending(r => r.Id).FirstOrDefaultAsync(r => r.IsActive);
+            if (round != null)
+            {
+                round.EndTime = DateTime.UtcNow;
+                round.IsActive = false;
+                
+                // Si había un juego corriendo, lo matamos
+                var game = await _db.Games.Where(g => g.RoundId == round.Id).OrderByDescending(g => g.Id).FirstOrDefaultAsync();
+                if (game != null && game.Phase == GamePhase.Playing)
+                {
+                    game.Phase = GamePhase.Lost;
+                    game.WinningReason = "Ronda terminada abruptamente";
+                }
+                
+                await _db.SaveChangesAsync();
+                return RedirectToAction("RoundSummary", new { id = round.Id });
+            }
+            return RedirectToAction(nameof(Index));
+        }
+
+        // ─── LEADERBOARD: GET /Home/RoundSummary ──────────────────────────────
+
+        [HttpGet]
+        public async Task<IActionResult> RoundSummary(int id)
+        {
+            var round = await _db.Rounds.Include(r => r.Games).FirstOrDefaultAsync(r => r.Id == id);
+            return View(round);
         }
 
         // ─── Helper: crear cola aleatoria ─────────────────────────────────────

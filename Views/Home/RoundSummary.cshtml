@@ -1,0 +1,79 @@
+@model JuegoConcepto.Models.Round
+@{
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    ViewData["Title"] = "Leaderboard de Ronda";
+}
+
+<div class="game-wrapper">
+    <div class="game-header">
+        <h1>📊 Fin de la Ronda</h1>
+        <p>Resultados finales de todas las partidas jugadas en esta ronda.</p>
+    </div>
+
+    <div class="card result-card" style="padding: 2rem 1.5rem;">
+        <div class="result-icon" style="margin-bottom:0.5rem">🏁</div>
+        <div class="result-title">Leaderboard</div>
+        <div class="result-subtitle" style="margin-bottom: 2rem;">
+            Partidas ganadas ordenadas por el mejor tiempo
+        </div>
+
+        @{
+            var wonGames = Model.Games
+                                .Where(g => g.Phase == JuegoConcepto.Models.GamePhase.Won)
+                                .OrderBy(g => g.ElapsedMilliseconds)
+                                .ToList();
+        }
+
+        @if (wonGames.Count > 0)
+        {
+            <div style="background:var(--bg); border:1px solid var(--border); border-radius:var(--radius-sm); overflow:hidden;">
+                <table style="width:100%; border-collapse:collapse; text-align:left; color:var(--text); font-size:0.95rem;">
+                    <thead>
+                        <tr style="background:var(--surface-2); border-bottom:1px solid var(--border);">
+                            <th style="padding:0.75rem 1rem; width:10%; text-align:center;">#</th>
+                            <th style="padding:0.75rem 1rem;">Jugador / Equipo</th>
+                            <th style="padding:0.75rem 1rem; width:25%;">Tiempo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @for (int i = 0; i < wonGames.Count; i++)
+                        {
+                            var game = wonGames[i];
+                            var ms = game.ElapsedMilliseconds;
+                            var totalSec = Math.Floor(ms / 1000.0);
+                            var min = Math.Floor(totalSec / 60).ToString().PadLeft(2, '0');
+                            var sec = (totalSec % 60).ToString().PadLeft(2, '0');
+                            var timeFormatted = $"{min}:{sec}";
+                            
+                            <tr style="border-bottom:1px solid var(--border);">
+                                <td style="padding:0.75rem 1rem; text-align:center;">
+                                    @(i == 0 ? "🥇" : (i == 1 ? "🥈" : (i == 2 ? "🥉" : (i + 1).ToString())))
+                                </td>
+                                <td style="padding:0.75rem 1rem; font-weight:500;">
+                                    @game.WinningIdentifier
+                                </td>
+                                <td style="padding:0.75rem 1rem; color:var(--accent-hover); font-variant-numeric: tabular-nums;">
+                                    @timeFormatted
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        else
+        {
+            <div style="padding:2rem; background:var(--surface-2); border-radius:var(--radius-sm); color:var(--text-muted);">
+                Aún no hay partidas ganadas registradas en esta ronda. ¡Suerte a la próxima!
+            </div>
+        }
+
+        <div class="divider" style="margin:2rem 0"></div>
+
+        <div style="display:flex; gap:1rem; justify-content:center;">
+            <a asp-controller="Home" asp-action="Index" class="btn btn-primary" style="text-decoration:none;">
+                ▶ Iniciar una Nueva Ronda
+            </a>
+        </div>
+    </div>
+</div>
