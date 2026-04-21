@@ -62,12 +62,13 @@ app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");
 
-// Auto-Migración
+// Auto-Creación
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<GameDbContext>();
-    // Si la DB (Postgres/SQLite) no existe, la crea. Si le faltan tablas, las crea.
-    dbContext.Database.Migrate();
+    // EnsureCreated analiza los modelos en tiempo de ejecución y crea las tablas.
+    // Ignora diferencias de dialecto entre las migraciones de SQLite y PostgreSQL.
+    dbContext.Database.EnsureCreated();
 }
 
 app.Run();
