@@ -49,9 +49,10 @@ namespace JuegoConcepto.Controllers
 
             var currentGame = round.Games.OrderByDescending(g => g.Id).FirstOrDefault();
             
-            if (currentGame == null || currentGame.Phase == GamePhase.Won || currentGame.Phase == GamePhase.Lost)
+            if (currentGame == null || currentGame.Phase == GamePhase.Won)
             {
-                // Si no hay juego activo en esta ronda, estamos en el Setup pidiendo que arranque uno nuevo
+                // Si no hay juego activo (o si ya se ganó y guardó el leaderboard),
+                // estamos en el Setup listos para arrancar una partida nueva en esta Ronda.
                 vm.Phase = GamePhase.Setup;
                 return vm;
             }
