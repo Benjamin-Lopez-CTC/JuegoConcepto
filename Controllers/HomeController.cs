@@ -218,7 +218,9 @@ namespace JuegoConcepto.Controllers
 
             // ===== REGLA NUEVA: Revisar si el color se repite en TODA LA RONDA =====
             ColorSubmission? duplicate = null;
-            foreach (var g in round.Games)
+            var orderedGames = round.Games.OrderBy(g => g.Id).ToList();
+            
+            foreach (var g in orderedGames)
             {
                 duplicate = g.ColorSubmissions.FirstOrDefault(cs => cs.NormalizedColor == normalized);
                 if (duplicate != null) break;
@@ -226,10 +228,12 @@ namespace JuegoConcepto.Controllers
 
             if (duplicate != null)
             {
+                int duplicateGameNumber = orderedGames.FindIndex(g => g.Id == duplicate.GameId) + 1;
+                
                 game.Phase = GamePhase.Lost;
                 game.DuplicateColor = color; // Usamos el original para mostrar
                 game.PlayersReached = game.ColorSubmissions.Count + 1;
-                game.WinningReason = $"El color \"{duplicate.Color}\" ya fue dicho por {duplicate.Player.Name} en otra partida anterior (o en esta).";
+                game.WinningReason = $"El color \"{duplicate.Color}\" ya fue dicho por {duplicate.Player.Name} en la Partida #{duplicateGameNumber}.";
                 await _db.SaveChangesAsync();
                 return RedirectToAction(nameof(Index));
             }
